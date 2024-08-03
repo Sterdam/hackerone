@@ -4,10 +4,17 @@ import socket
 import sys
 import re
 import time
+import argparse
+import os
 
-def scan_ip(ip):
+def scan_ip(ip, mode):
     nm = nmap.PortScanner()
-    nm.scan(ip, arguments='-p- -sV')
+    if mode == 'default':
+        nm.scan(ip, arguments='-p- -sV')
+    elif mode == 'all':
+        nm.scan(ip, arguments='-p- -sV -sC')
+    elif mode == 'aggressive':
+        nm.scan(ip, arguments='-p- -sV -sC -A --osscan-guess')
     
     results = []
     for proto in nm[ip].all_protocols():
@@ -34,28 +41,32 @@ def extract_domains(file_path):
     return list(domains)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python script.py <path_to_json_file>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Nmap scanner with multiple modes')
+    parser.add_argument('json_file', help='Path to the JSON file containing domains')
+    parser.add_argument('--mode', choices=['default', 'all', 'aggressive'], default='default',
+                        help='Scanning mode: default, all (all ports), or aggressive')
+    args = parser.parse_args()
 
-    json_file = sys.argv[1]
-    print(f"Extracting domains from {json_file}...")
-    domains = extract_domains(json_file)
+    print(f"Extracting domains from {args.json_file}...")
+    domains = extract_domains(args.json_file)
     print(f"Found {len(domains)} unique domains.")
 
-    print("Starting scan...")
+    print(f"Starting scan in {args.mode} mode...")
     start_time = time.time()
 
+    # Generate output file name
+    output_file = os.path.splitext(args.json_file)[0] + "_results.txt"
+
     # Open the output file
-    with open('nmap_results.txt', 'w') as f:
+    with open(output_file, 'w') as f:
         for index, domain in enumerate(domains, 1):
             print(f"\nProcessing domain {index}/{len(domains)} ({domain})...")
             try:
                 ip = socket.gethostbyname(domain)
                 print(f"Resolved IP: {ip}")
                 f.write(f"\nScanning {domain} ({ip}):\n")
-                print("Starting nmap scan...")
-                results = scan_ip(ip)
+                print(f"Starting nmap scan in {args.mode} mode...")
+                results = scan_ip(ip, args.mode)
                 if results:
                     print(f"Found {len(results)} open ports.")
                     for result in results:
@@ -84,4 +95,4 @@ if __name__ == "__main__":
 
     total_time = time.time() - start_time
     print(f"\nScan completed in {total_time:.2f} seconds.")
-    print("Results have been written to nmap_results.txt")
+    print(f"Results have been written to {output_file}")
